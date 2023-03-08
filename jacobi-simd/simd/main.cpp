@@ -103,12 +103,12 @@ int main(int argc, char** argv) {
         auto bottom  = _mm256_loadu_ps(Phi + i +     jArr + nXArr);
         auto bottomR = _mm256_loadu_ps(Phi + i + 1 + jArr + nXArr);
 
-        auto Avsum   = _mm256_mul_ps(vA, _mm256_add_ps(top, bottom));
-        auto Bhsum   = _mm256_mul_ps(vB, _mm256_add_ps(left, right));
-        auto Cdsum   = _mm256_mul_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
-                                                       _mm256_add_ps(bottomL, bottomR)));
-        auto result  = _mm256_add_ps(_mm256_add_ps(vD, Cdsum),
-                                     _mm256_add_ps(Avsum, Bhsum));
+        
+        auto result0  = _mm256_fmadd_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
+                                                       _mm256_add_ps(bottomL, bottomR)), vD);
+        auto result1 = _mm256_fmadd_ps(vA, _mm256_add_ps(top, bottom), result0);
+        auto result  = _mm256_fmadd_ps(vB, _mm256_add_ps(left, right), result1);
+        
         _mm256_storeu_ps(PhiN + i + jArr, result);
       }
       for (auto i = (nX+1)&div8mask; i < nX+1; i++) {
