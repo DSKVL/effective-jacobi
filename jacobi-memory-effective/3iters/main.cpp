@@ -50,6 +50,7 @@ inline void countTwoIterations(float* Phi, float* PhiN, const size_t nX, const s
     countLine(Phi, PhiN, nX, nXArr, jArr, vA, vB, vC, D, A, B, C);
     countLine(PhiN, Phi, nX, nXArr, jArr-nXArr, vA, vB, vC, D, A, B, C);
   }
+  countLine(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
 }
 
 
@@ -60,7 +61,66 @@ inline void countThreeIterations(float* Phi, float* PhiN, const size_t nX, const
   countLine(Phi, PhiN, nX, nXArr, 2*nXArr, vA, vB, vC, D, A, B, C);
   countLine(PhiN, Phi, nX, nXArr, nXArr, vA, vB, vC, D, A, B, C);
   
-  for (auto jArr = )  
+  for (auto jArr = 3*nXArr; jArr < jArrLimit; jArr+=nXArr) {
+    countLine(Phi, PhiN, nX, nXArr, jArr, vA, vB, vC, D, A, B, C);
+    countLine(PhiN, Phi, nX, nXArr, jArr-nXArr, vA, vB, vC, D, A, B, C);
+    countLine(Phi, PhiN, nX, nXArr, jArr-nXArr-nXArr, vA, vB, vC, D, A, B, C);
+  }
+
+  countLine(Phi, PhiN, nX, nXArr, jArrLimit-nXArr-nXArr, vA, vB, vC, D, A, B, C);
+  countLine(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
+ 
+  countLine(Phi, PhiN, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
+    
+}
+
+template<size_t N>
+void mainIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
+  
+  countLine(Phi, PhiN, nX, nXArr, jArr, vA, vB, vC, D, A, B, C);
+//Maybe do a helper
+  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArr-nXArr, vA, vB, vC, D, A, B, C);
+}
+
+template<>
+void mainIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
+
+template<size_t N>
+void initialIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
+  
+  initialIterations<N-1>(Phi, PhiN, nX, nXArr, nXArr, vA, vB, vC, D, A, B, C);
+  
+  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArr+nXArr, vA, vB, vC, D, A, B, C);
+}
+
+template<>
+void initialIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
+
+template<size_t N>
+void endingIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
+//MAybe make a helper
+  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
+
+  endingIterations<N-1>(Phi, PhiN, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
+}
+template<>
+void endingIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
+
+template<size_t N>
+void countIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
+  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
+  
+  initialIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
+  for (auto jArr = N*nXArr; jArr < jArrLimit; jArr+=nXArr)
+    mainIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
+  endingIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
+  if (N%2) std::swap(Phi, PhiN);
 }
 
 int main(int argc, char** argv) {
