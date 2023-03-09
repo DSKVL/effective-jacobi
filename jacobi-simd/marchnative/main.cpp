@@ -93,11 +93,11 @@ int main(int argc, char** argv) {
       }
     
     
-    std::cout << std::transform_reduce(Phi,  Phi+arrSize,
-                                       PhiN,
-                                       0.0f,
-                                       [](const auto& a, const auto& b){return std::max(a, b);},
-                                       [](const auto& a, const auto& b){return std::abs(a-b);}) << "\n";
+//    std::cout << std::transform_reduce(Phi,  Phi+arrSize,
+//                                       PhiN,
+//                                       0.0f,
+//                                       [](const auto& a, const auto& b){return std::max(a, b);},
+//                                       [](const auto& a, const auto& b){return std::abs(a-b);}) << "\n";
     
     std::swap(PhiN, Phi);
   }

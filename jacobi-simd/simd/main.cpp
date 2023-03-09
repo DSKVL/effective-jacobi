@@ -104,8 +104,7 @@ int main(int argc, char** argv) {
         auto bottomR = _mm256_loadu_ps(Phi + i + 1 + jArr + nXArr);
 
         
-        auto result0  = _mm256_fmadd_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
-                                                       _mm256_add_ps(bottomL, bottomR)), vD);
+        auto result0  = _mm256_fmadd_ps(vC, topL + topR + bottomL + bottomR, vD);
         auto result1 = _mm256_fmadd_ps(vA, _mm256_add_ps(top, bottom), result0);
         auto result  = _mm256_fmadd_ps(vB, _mm256_add_ps(left, right), result1);
         
@@ -119,28 +118,30 @@ int main(int argc, char** argv) {
     }
 
 
-    auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
-    for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
-      auto phi  = _mm256_load_ps(Phi + i);
-      auto phin = _mm256_load_ps(PhiN + i);
-      auto sub  = _mm256_sub_ps(phi, phin);
-      auto dist = _mm256_and_ps(sub, absMaskVec);
-      vMax = _mm256_max_ps(vMax, dist);
-    }
-    auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
-    vMax = _mm256_max_ps(vMax, vMaxShuffled);
-    vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
-    vMax = _mm256_max_ps(vMax, vMaxShuffled);
-    auto max = std::max(vMax[0], vMax[4]);
-    for (auto i = arrSize&div8mask; i < arrSize; i++) 
-      max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
-    std::cout << max << "\n";    
+//    auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
+//    for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
+//      auto phi  = _mm256_load_ps(Phi + i);
+//      auto phin = _mm256_load_ps(PhiN + i);
+//      auto sub  = _mm256_sub_ps(phi, phin);
+//      auto dist = _mm256_and_ps(sub, absMaskVec);
+//      vMax = _mm256_max_ps(vMax, dist);
+//    }
+//    auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
+//    vMax = _mm256_max_ps(vMax, vMaxShuffled);
+ //   vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
+//    vMax = _mm256_max_ps(vMax, vMaxShuffled);
+//    auto max = std::max(vMax[0], vMax[4]);
+//    for (auto i = arrSize&div8mask; i < arrSize; i++) 
+//      max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
+//    std::cout << max << "\n";    
     std::swap(PhiN, Phi);
   }
   auto end = std::chrono::high_resolution_clock::now();
 
 
   std::cout << std::chrono::duration<double>(end - start).count() << "\n";
+
+  dump(Phi, nXArr, nYArr, "Out");
  
   delete[] rho;
   free(D);

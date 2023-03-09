@@ -1,11 +1,12 @@
-# started on Thu Mar  2 12:10:06 2023
+# started on Thu Mar  9 01:28:01 2023
 
 
  Performance counter stats for './main 10000 10000 120' (20 runs):
 
-    56,417,961,954      cycles:u                                                             ( +-  0.84% )
-     4,721,461,036      branches:u                                                           ( +-  0.00% )
-         1,256,037      branch-misses:u                  #    0.03% of all branches          ( +-  0.14% )
+    91,620,562,935      instructions:u                   #    1.59  insn per cycle           ( +-  0.00% )
+    56,742,634,318      cycles:u                                                             ( +-  0.68% )
+     4,721,458,788      branches:u                                                           ( +-  0.00% )
+         1,262,783      branch-misses:u                  #    0.03% of all branches          ( +-  0.09% )
 
-            17.832 +- 0.148 seconds time elapsed  ( +-  0.83% )
+            16.366 +- 0.117 seconds time elapsed  ( +-  0.71% )
 
