@@ -53,74 +53,26 @@ inline void countTwoIterations(float* Phi, float* PhiN, const size_t nX, const s
   countLine(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
 }
 
+inline auto delta(const float *Phi, const float* PhiN, size_t nXArr, size_t arrSize) {
+  constexpr auto div8mask = 0xFFFFFFF8ul;
+  const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
 
-inline void countThreeIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
-  countLine(Phi, PhiN, nX, nXArr, nXArr, vA, vB, vC, D, A, B, C);
-  
-  countLine(Phi, PhiN, nX, nXArr, 2*nXArr, vA, vB, vC, D, A, B, C);
-  countLine(PhiN, Phi, nX, nXArr, nXArr, vA, vB, vC, D, A, B, C);
-  
-  for (auto jArr = 3*nXArr; jArr < jArrLimit; jArr+=nXArr) {
-    countLine(Phi, PhiN, nX, nXArr, jArr, vA, vB, vC, D, A, B, C);
-    countLine(PhiN, Phi, nX, nXArr, jArr-nXArr, vA, vB, vC, D, A, B, C);
-    countLine(Phi, PhiN, nX, nXArr, jArr-nXArr-nXArr, vA, vB, vC, D, A, B, C);
+  auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
+  for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
+    auto phi  = _mm256_load_ps(Phi + i);
+    auto phin = _mm256_load_ps(PhiN + i);
+    auto sub  = _mm256_sub_ps(phi, phin);
+    auto dist = _mm256_and_ps(sub, absMaskVec);
+    vMax = _mm256_max_ps(vMax, dist);
   }
-
-  countLine(Phi, PhiN, nX, nXArr, jArrLimit-nXArr-nXArr, vA, vB, vC, D, A, B, C);
-  countLine(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
- 
-  countLine(Phi, PhiN, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
-    
-}
-
-template<size_t N>
-void mainIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
-  
-  countLine(Phi, PhiN, nX, nXArr, jArr, vA, vB, vC, D, A, B, C);
-//Maybe do a helper
-  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArr-nXArr, vA, vB, vC, D, A, B, C);
-}
-
-template<>
-void mainIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
-
-template<size_t N>
-void initialIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
-  
-  initialIterations<N-1>(Phi, PhiN, nX, nXArr, nXArr, vA, vB, vC, D, A, B, C);
-  
-  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArr+nXArr, vA, vB, vC, D, A, B, C);
-}
-
-template<>
-void initialIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
-
-template<size_t N>
-void endingIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
-//MAybe make a helper
-  mainIterations<N-1>(PhiN, Phi, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
-
-  endingIterations<N-1>(Phi, PhiN, nX, nXArr, jArrLimit-nXArr, vA, vB, vC, D, A, B, C);
-}
-template<>
-void endingIterations<0>(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {}
-
-template<size_t N>
-void countIterations(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArrLimit, 
-  const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
-  
-  initialIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
-  for (auto jArr = N*nXArr; jArr < jArrLimit; jArr+=nXArr)
-    mainIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
-  endingIterations<N>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
-  if (N%2) std::swap(Phi, PhiN);
+  auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
+  vMax = _mm256_max_ps(vMax, vMaxShuffled);
+  vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
+  vMax = _mm256_max_ps(vMax, vMaxShuffled);
+  auto max = std::max(vMax[0], vMax[4]);
+  for (auto i = arrSize&div8mask; i < arrSize; i++) 
+    max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
+  return max;
 }
 
 int main(int argc, char** argv) {
@@ -130,7 +82,6 @@ int main(int argc, char** argv) {
   }
 
   constexpr auto div8mask = 0xFFFFFFF8ul;
-
   const auto nX = std::stoul(std::string(argv[1]));
   const auto nY = std::stoul(std::string(argv[2]));
   const auto nT = std::stoul(std::string(argv[3]));
@@ -195,34 +146,15 @@ int main(int argc, char** argv) {
   std::fill(Phi, Phi+arrSize, 0.0f);
   std::fill(PhiN, PhiN+arrSize, 0.0f);
 
-  const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
   auto start = std::chrono::high_resolution_clock::now();
   for (auto _ = 0ul; _ < nT/2; _++) {
-    auto jArr = nXArr;
     countTwoIterations(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
-  
-    auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
-    for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
-      auto phi  = _mm256_load_ps(Phi + i);
-      auto phin = _mm256_load_ps(PhiN + i);
-      auto sub  = _mm256_sub_ps(phi, phin);
-      auto dist = _mm256_and_ps(sub, absMaskVec);
-      vMax = _mm256_max_ps(vMax, dist);
-    }
-    auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
-    vMax = _mm256_max_ps(vMax, vMaxShuffled);
-    vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
-    vMax = _mm256_max_ps(vMax, vMaxShuffled);
-    auto max = std::max(vMax[0], vMax[4]);
-    for (auto i = arrSize&div8mask; i < arrSize; i++) 
-      max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
-    std::cout << max << "\n";    
-    std::swap(PhiN, Phi);
+    std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
   }
   auto end = std::chrono::high_resolution_clock::now();
 
   std::cout << std::chrono::duration<double>(end - start).count() << "\n";
- 
+
   delete[] rho;
   free(D);
   free(Phi);
