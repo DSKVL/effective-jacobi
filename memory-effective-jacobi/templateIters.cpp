@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     std::cout << "Wrong arguments.\n";
     return 0;
   }
-
+  constexpr size_t iterationsPerRun = ITERS_PER_RUN;
   constexpr auto div8mask = 0xFFFFFFF8ul;
   const auto nX = std::stoul(std::string(argv[1]));
   const auto nY = std::stoul(std::string(argv[2]));
@@ -188,10 +188,12 @@ int main(int argc, char** argv) {
   std::fill(PhiN, PhiN+arrSize, 0.0f);
 
   auto start = std::chrono::high_resolution_clock::now();
-  for (auto _ = 0ul; _ < nT/(ITERS_PER_RUN); _++) {
-    countIterations<ITERS_PER_RUN>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
+  for (auto _ = 0ul; _ < nT/(iterationsPerRun); _++) {
+    countIterations<iterationsPerRun>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
+#ifndef NO_DELTA
     std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
-    if ((ITERS_PER_RUN)%2) std::swap(Phi, PhiN); 
+#endif
+    if (iterationsPerRun%2) std::swap(Phi, PhiN); 
   }
   auto end = std::chrono::high_resolution_clock::now();
 
