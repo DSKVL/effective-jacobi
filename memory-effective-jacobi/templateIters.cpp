@@ -12,7 +12,7 @@
 #endif
 
 void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::string filename) {
-  auto out = std::ofstream(filename);
+  auto out = std::ofstream(filename, std::ios_base::out | std::ios_base::binary);
   for (auto jArr = nXArr; jArr < nXArr*(nYArr-1); jArr+=nXArr) {
     for (auto i = 1ul; i < nXArr-1; i++)
       out << mtx[i + jArr] <<  " ";
@@ -132,9 +132,9 @@ int main(int argc, char** argv) {
   const auto jArrLimit = arrSize - nXArr;
   
   constexpr auto xA = 0.0f;
-  constexpr auto xB = 400.0f;
+  constexpr auto xB = 40000.0f;
   constexpr auto yA = 0.0f;
-  constexpr auto yB = 400.0f;
+  constexpr auto yB = 40000.0f;
   
   const float hX = (xB - xA)/(nX - 1);
   const float hY = (yB - yA)/(nY - 1);
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
 #ifndef NO_DELTA
     std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
 #endif
-    if (iterationsPerRun%2) std::swap(Phi, PhiN); 
+    if constexpr (iterationsPerRun%2) std::swap(Phi, PhiN); 
   }
   auto end = std::chrono::high_resolution_clock::now();
 
