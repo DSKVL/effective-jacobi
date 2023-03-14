@@ -19,24 +19,34 @@ void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::s
   }
 }
 
-//TODO sync, swaps
-
 template<size_t nThreads, size_t Iters>
 class JacobiEquasion {
 public:
   JacobiEquasion(float *Phi, float* PhiN, size_t nX, size_t nXArr, 
                  size_t jArrLimit, size_t nT, const float A, const float B, const float C, float* D) 
                 : startBarrier(nThreads), endBarrier(nThreads),
-                  Phi(Phi), PhiN(PhiN), nX(nX), nXArr(nXArr), jArrLimit(jArrLimit), nT(nT),
+                  PhiGlobal(Phi), PhiNGlobal(PhiN), nX(nX), nXArr(nXArr), jArrLimit(jArrLimit), nT(nT),
                   vA(_mm256_set1_ps(A)), vB(_mm256_set1_ps(B)), vC(_mm256_set1_ps(C)), 
                   A(A), B(B), C(C), D(D)
   {} 
+
+  template<size_t N>
+  inline void initThreads(const size_t jArrStart, const size_t jArrLength) {
+    auto countIterationsInstantiated = [=, this](float* Phi, float* PhiN, const size_t jArrStart, const size_t jArrLength) {
+        countIterations<Iters, nThreads-N>(Phi, PhiN, jArrStart, jArrLength);
+    };
+    if (N == 1) 
+      threads[nThreads-2] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLimit-jArrStart);
+    else {
+      threads[nThreads - N] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLength);
+      initThreads<N-1>(jArrStart+jArrLength, jArrLength);
+    }
+  }
   
   void solve() {
-    for(auto thread{threads.begin()}; thread != threads.end(); thread++) 
-      *thread = std::thread(countIterationsMid<Iters>, jArrC);
-
-  //TODO first rows
+    const auto jArrLength = (jArrLimit - nXArr)/nThreads;
+    initThreads<nThreads-1>(nXArr + jArrLength, jArrLength);
+    countIterations<Iters, 0>(PhiGlobal, PhiNGlobal, nXArr, jArrLength);  
 
     for (auto& thread : threads)
       thread.join();
@@ -45,14 +55,14 @@ private:
   inline void countLine(float* Phi, float* PhiN, size_t jArr) {
     constexpr auto div8mask = 0xFFFFFFF8ul; 
     for (auto i = 0ul; i < ((nX+1 - 8)&div8mask); i+=8) {
-      auto topL    = _mm256_load_ps( Phi + i - 1 + jArr - nXArr);
-      auto top     = _mm256_loadu_ps(Phi + i +     jArr - nXArr);
+      auto topL    = _mm256_loadu_ps( Phi + i - 1 + jArr - nXArr);
+      auto top     = _mm256_load_ps(Phi + i +     jArr - nXArr);
       auto topR    = _mm256_loadu_ps(Phi + i + 1 + jArr - nXArr);
-      auto left    = _mm256_load_ps( Phi + i - 1 + jArr);
-      auto vD      = _mm256_loadu_ps(D + i + jArr);
+      auto left    = _mm256_loadu_ps( Phi + i - 1 + jArr);
+      auto vD      = _mm256_load_ps(D + i + jArr);
       auto right   = _mm256_loadu_ps(Phi + i + 1 + jArr);
-      auto bottomL = _mm256_load_ps( Phi + i - 1 + jArr + nXArr);
-      auto bottom  = _mm256_loadu_ps(Phi + i +     jArr + nXArr);
+      auto bottomL = _mm256_loadu_ps( Phi + i - 1 + jArr + nXArr);
+      auto bottom  = _mm256_load_ps(Phi + i +     jArr + nXArr);
       auto bottomR = _mm256_loadu_ps(Phi + i + 1 + jArr + nXArr);
       auto result0  = _mm256_fmadd_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
                                                        _mm256_add_ps(bottomL, bottomR)), vD);
@@ -70,83 +80,48 @@ private:
 
   template<size_t N>
   inline void countStringIterations(float* Phi, float* PhiN, const size_t jArr) {
-  
-    countLine(Phi, PhiN, jArr);
-    countStringIterations<N-1>(PhiN, Phi, jArr-nXArr);
+    if constexpr (N > 0) {
+      countLine(Phi, PhiN, jArr);
+      countStringIterations<N-1>(PhiN, Phi, jArr-nXArr);
+    }
   }
 
-  template<size_t N>
+  template<size_t N, size_t rank>
   inline void initialIterations(float* Phi, float* PhiN, const size_t jArr) {
-  
-    initialIterations<N-1>(Phi, PhiN, jArr);
-  
-    countStringIterations<N-1>(PhiN, Phi, (N-1)*nXArr);
-  }
-
-  template<size_t N>
-  inline void initialIterationsMid(float* Phi, float* PhiN, const size_t jArr) {
-  
-    initialIterationsMid<N-1>(Phi, PhiN, jArr-nXArr-nXArr);
-  
-    countStringIterations<N-1>(Phi, PhiN, (N-2)*nXArr);
-    countStringIterations<N-1>(Phi, PhiN, (N-1)*nXArr);
-  }
-
-  template<size_t N>
-  inline void endingIterations(float* Phi, float* PhiN, const size_t jArrLimit) {
-
-    countStringIterations<N-1>(PhiN, Phi, jArrLimit-nXArr);
-
-    endingIterations<N-1>(PhiN, Phi, jArrLimit);
-  }
-
-  template<size_t N>
-  inline void endingIterationsMid(float* Phi, float* PhiN, const size_t jArr) {
-
-    countStringIterations<N-1>(Phi, PhiN, jArr);
-    countStringIterations<N-1>(Phi, PhiN, jArr+nXArr);
-
-    endingIterations<N-1>(Phi, PhiN, jArr+nXArr+nXArr);
-  }
-
-  template<> inline void countStringIterations<0>(float*, float*, const size_t) {}
-  template<> inline void initialIterations<0>(float*, float*, const size_t) {}
-  template<> inline void initialIterationsMid<0>(float*, float*, const size_t) {}
-  template<> inline void endingIterations<0>(float*, float*, const size_t) {}
-  template<> inline void endingIterationsMid<0>(float*, float*, const size_t) {}
-
-  template<size_t N>
-  inline void countIterationsInit(float* Phi, float* PhiN, const size_t jArr) {
-    for (auto _ = 0ul; _ < nT; _++) {
-      initialIterations<N>(jArr);
-      for (auto jArrLocal = N*nXArr; jArrLocal < jArr; jArrLocal+=nXArr)
-        countStringIterations<N>(jArrLocal);
-      endBarrier.arrive_and_wait();
-      endingIterationsMid<N>(jArr);
-      if constexpr (N%2) std::swap(Phi, PhiN);
-      startBarrier.arrive_and_wait();
+    if constexpr (N != 0) {
+      if constexpr (rank==0) {
+        initialIterations<N-1, rank>(Phi, PhiN, jArr);
+        countStringIterations<N-1>(PhiN, Phi, (N-1)*nXArr);
+      }
+      initialIterations<N-1, rank>(Phi, PhiN, jArr-nXArr);
+      countStringIterations<N-1>(Phi, PhiN, (N-3)*nXArr);
+      countStringIterations<N-1>(Phi, PhiN, (N-2)*nXArr);
     }
   }
-  template<size_t N>
-  inline void countIterationsMid(float* Phi, float* PhiN, const size_t jArr) {
-    for (auto _ = 0ul; _ < nT; _++) {
-      initialIterationsMid<N>(jArr);
-      for (auto jArrLocal = N*nXArr; jArrLocal < jArr; jArrLocal+=nXArr)
-        countStringIterations<N>(jArrLocal);
-      endBarrier.arrive_and_wait();
-      endingIterationsMid<N>(jArr);
-      if constexpr (N%2) std::swap(Phi, PhiN);
-      startBarrier.arrive_and_wait();
+
+
+  template<size_t N, size_t rank>
+  inline void endingIterations(float* Phi, float* PhiN, const size_t jArr) {
+    if constexpr (N != 0) {
+      if constexpr (rank == nThreads-1) {
+        countStringIterations<N-1>(PhiN, Phi, jArrLimit-nXArr);
+        endingIterations<N-1, rank>(PhiN, Phi, jArrLimit);
+      }
+      countStringIterations<N-1>(PhiN, Phi, jArr);
+      countStringIterations<N-1>(PhiN, Phi, jArr+nXArr);
+      endingIterations<N-1, rank>(PhiN, Phi, jArr+nXArr);
     }
   }
-  template<size_t N>
-  inline void countIterationsFinal(float* Phi, float* PhiN, const size_t jArr) {
+
+  template<size_t N, size_t rank>
+  inline void countIterations(float* Phi, float* PhiN, const size_t jArrStart, const size_t jArrLength) {
     for (auto _ = 0ul; _ < nT; _++) {
-      initialIterationsMid<N>(jArr);
-      for (auto jArrLocal = N*nXArr; jArrLocal < jArr; jArrLocal+=nXArr)
-        countStringIterations<N>(jArrLocal);
+      initialIterations<N, rank>(Phi, PhiN, jArrStart);
+      for (auto jArrLocal = jArrStart + (N-1)*nXArr;
+           jArrLocal < jArrStart + jArrLength - (N-1)*nXArr; 
+           jArrLocal+=nXArr) countStringIterations<N>(Phi, PhiN, jArrLocal);
       endBarrier.arrive_and_wait();
-      endingIterations<N>(jArr);
+      endingIterations<N, rank>(Phi, PhiN, jArrStart + jArrLength - (N-1)*nXArr);
       if constexpr (N%2) std::swap(Phi, PhiN);
       startBarrier.arrive_and_wait();
     }
@@ -156,7 +131,7 @@ private:
   std::barrier<> endBarrier; 
   std::array<std::thread, nThreads-1> threads;
 
-  float* Phi, *PhiN;
+  float* PhiGlobal, *PhiNGlobal;
   const size_t nX, nXArr, jArrLimit, nT; 
   const __m256 vA, vB, vC;
   const float A, B, C;
