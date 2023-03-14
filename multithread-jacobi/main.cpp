@@ -32,13 +32,13 @@ public:
 
   template<size_t N>
   inline void initThreads(const size_t jArrStart, const size_t jArrLength) {
-    auto countIterationsInstantiated = [=, this](float* Phi, float* PhiN, const size_t jArrStart, const size_t jArrLength) {
-        countIterations<Iters, nThreads-N>(Phi, PhiN, jArrStart, jArrLength);
+    auto countIterationsInstantiated = [=, this](float* Phi, float* PhiN, const size_t jArr, const size_t jArrL) {
+        countIterations<Iters, nThreads-N>(Phi, PhiN, jArr, jArrL);
     };
-    if (N == 1) 
+    if constexpr (N == 1) 
       threads[nThreads-2] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLimit-jArrStart);
     else {
-      threads[nThreads - N] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLength);
+      threads[nThreads-1 - N] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLength);
       initThreads<N-1>(jArrStart+jArrLength, jArrLength);
     }
   }
@@ -54,15 +54,15 @@ public:
 private:
   inline void countLine(float* Phi, float* PhiN, size_t jArr) {
     constexpr auto div8mask = 0xFFFFFFF8ul; 
-    for (auto i = 0ul; i < ((nX+1 - 8)&div8mask); i+=8) {
+    for (auto i = 1ul; i < ((nX+1 - 8)&div8mask); i+=8) {
       auto topL    = _mm256_loadu_ps( Phi + i - 1 + jArr - nXArr);
-      auto top     = _mm256_load_ps(Phi + i +     jArr - nXArr);
+      auto top     = _mm256_loadu_ps(Phi + i +     jArr - nXArr);
       auto topR    = _mm256_loadu_ps(Phi + i + 1 + jArr - nXArr);
       auto left    = _mm256_loadu_ps( Phi + i - 1 + jArr);
-      auto vD      = _mm256_load_ps(D + i + jArr);
+      auto vD      = _mm256_loadu_ps(D + i + jArr);
       auto right   = _mm256_loadu_ps(Phi + i + 1 + jArr);
       auto bottomL = _mm256_loadu_ps( Phi + i - 1 + jArr + nXArr);
-      auto bottom  = _mm256_load_ps(Phi + i +     jArr + nXArr);
+      auto bottom  = _mm256_loadu_ps(Phi + i +     jArr + nXArr);
       auto bottomR = _mm256_loadu_ps(Phi + i + 1 + jArr + nXArr);
       auto result0  = _mm256_fmadd_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
                                                        _mm256_add_ps(bottomL, bottomR)), vD);
@@ -91,7 +91,7 @@ private:
     if constexpr (N != 0) {
       if constexpr (rank==0) {
         initialIterations<N-1, rank>(Phi, PhiN, jArr);
-        countStringIterations<N-1>(PhiN, Phi, (N-1)*nXArr);
+        countStringIterations<N-1>(PhiN, Phi, jArr + (N-2) * nXArr);
       }
       initialIterations<N-1, rank>(Phi, PhiN, jArr-nXArr);
       countStringIterations<N-1>(Phi, PhiN, (N-3)*nXArr);
@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
   const auto B = commonMultiplier*0.5f*(5/(hY*hY) - 1/(hX*hX));
   const auto C = 0.05f;
   
-  auto D = (float*) aligned_alloc(256, sizeof(float) * arrSize);
+  auto D = (float*) aligned_alloc(256, (sizeof(float) * arrSize + 256)-(sizeof(float) * arrSize + 256)%256);
   std::fill(D, D+arrSize, 0.0f);
   for (auto jArr = nXArr; jArr < jArrLimit; jArr+=nXArr) {
     for (auto i = 1ul; i < nX + 1; i++) {
@@ -224,14 +224,16 @@ int main(int argc, char** argv) {
     }
   }
   
-  auto Phi = (float*) aligned_alloc(256, sizeof(float) * arrSize);
-  auto PhiN = (float*) aligned_alloc(256, sizeof(float) * arrSize);
+  auto Phi = (float*) aligned_alloc(256, (sizeof(float) * arrSize + 256)-(sizeof(float) * arrSize + 256)%256);
+  auto PhiN = (float*) aligned_alloc(256, (sizeof(float) * arrSize + 256)-(sizeof(float) * arrSize + 256)%256);
   std::fill(Phi, Phi+arrSize, 0.0f);
   std::fill(PhiN, PhiN+arrSize, 0.0f);
   JacobiEquasion<4, iterationsPerRun> eq(Phi, PhiN, nX, nXArr, jArrLimit, nT, A, B, C, D);
 
   auto start = std::chrono::high_resolution_clock::now();
   eq.solve();
+    std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";
+
 #ifndef NO_DELTA
   std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
 #endif
@@ -240,7 +242,7 @@ int main(int argc, char** argv) {
   std::cout << std::chrono::duration<double>(end - start).count() << "\n";
 
 #ifdef DUMP
-  dump(Phi, nXArr, nYArr, "out" + std::to_string(ITERS_PER_RUN) + "iters");
+  dump(PhiN, nXArr, nYArr, "out" + std::to_string(ITERS_PER_RUN) + "iters");
 #endif
   delete[] rho;
   free(D);
