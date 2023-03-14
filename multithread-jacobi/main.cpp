@@ -19,6 +19,28 @@ void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::s
   }
 }
 
+inline auto delta(const float *Phi, const float* PhiN, size_t nXArr, size_t arrSize) {
+  constexpr auto div8mask = 0xFFFFFFF8ul;
+  const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
+
+  auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
+  for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
+    auto phi  = _mm256_load_ps(Phi + i);
+    auto phin = _mm256_load_ps(PhiN + i);
+    auto sub  = _mm256_sub_ps(phi, phin);
+    auto dist = _mm256_and_ps(sub, absMaskVec);
+    vMax = _mm256_max_ps(vMax, dist);
+  }
+  auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
+  vMax = _mm256_max_ps(vMax, vMaxShuffled);
+  vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
+  vMax = _mm256_max_ps(vMax, vMaxShuffled);
+  auto max = std::max(vMax[0], vMax[4]);
+  for (auto i = arrSize&div8mask; i < arrSize; i++) 
+    max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
+  return max;
+}
+
 template<size_t nThreads, size_t Iters>
 class JacobiEquasion {
 public:
@@ -32,13 +54,14 @@ public:
 
   template<size_t N>
   inline void initThreads(const size_t jArrStart, const size_t jArrLength) {
-    auto countIterationsInstantiated = [=, this](float* Phi, float* PhiN, const size_t jArr, const size_t jArrL) {
-        countIterations<Iters, nThreads-N>(Phi, PhiN, jArr, jArrL);
-    };
     if constexpr (N == 1) 
-      threads[nThreads-2] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLimit-jArrStart);
+      threads[nThreads-2] = std::thread([=, this](float* Phi, float* PhiN, const size_t jArr, const size_t jArrL) {
+        countIterations<Iters, nThreads-N>(Phi, PhiN, jArr, jArrL);
+      }, PhiGlobal, PhiNGlobal, jArrStart, jArrLimit-jArrStart);
     else {
-      threads[nThreads-1 - N] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jArrStart, jArrLength);
+      threads[nThreads-1 - N] = std::thread([=, this](float* Phi, float* PhiN, const size_t jArr, const size_t jArrL) {
+        countIterations<Iters, nThreads-N>(Phi, PhiN, jArr, jArrL);
+      }, PhiGlobal, PhiNGlobal, jArrStart, jArrLength);
       initThreads<N-1>(jArrStart+jArrLength, jArrLength);
     }
   }
@@ -88,14 +111,15 @@ private:
 
   template<size_t N, size_t rank>
   inline void initialIterations(float* Phi, float* PhiN, const size_t jArr) {
-    if constexpr (N != 0) {
+    if constexpr (N != 1) {
       if constexpr (rank==0) {
         initialIterations<N-1, rank>(Phi, PhiN, jArr);
         countStringIterations<N-1>(PhiN, Phi, jArr + (N-2) * nXArr);
+      } else {
+        initialIterations<N-1, rank>(Phi, PhiN, jArr-nXArr);
+        countStringIterations<N-1>(Phi, PhiN, jArr + (N-2)*nXArr);
+        countStringIterations<N-1>(Phi, PhiN, jArr + (N-3)*nXArr);
       }
-      initialIterations<N-1, rank>(Phi, PhiN, jArr-nXArr);
-      countStringIterations<N-1>(Phi, PhiN, (N-3)*nXArr);
-      countStringIterations<N-1>(Phi, PhiN, (N-2)*nXArr);
     }
   }
 
@@ -106,16 +130,17 @@ private:
       if constexpr (rank == nThreads-1) {
         countStringIterations<N-1>(PhiN, Phi, jArrLimit-nXArr);
         endingIterations<N-1, rank>(PhiN, Phi, jArrLimit);
+      } else {
+        countStringIterations<N-1>(PhiN, Phi, jArr);
+        countStringIterations<N-1>(PhiN, Phi, jArr+nXArr);
+        endingIterations<N-1, rank>(PhiN, Phi, jArr+nXArr);
       }
-      countStringIterations<N-1>(PhiN, Phi, jArr);
-      countStringIterations<N-1>(PhiN, Phi, jArr+nXArr);
-      endingIterations<N-1, rank>(PhiN, Phi, jArr+nXArr);
     }
   }
 
   template<size_t N, size_t rank>
   inline void countIterations(float* Phi, float* PhiN, const size_t jArrStart, const size_t jArrLength) {
-    for (auto _ = 0ul; _ < nT; _++) {
+    for (auto _ = 0ul; _ < nT/N; _++) {
       initialIterations<N, rank>(Phi, PhiN, jArrStart);
       for (auto jArrLocal = jArrStart + (N-1)*nXArr;
            jArrLocal < jArrStart + jArrLength - (N-1)*nXArr; 
@@ -123,6 +148,11 @@ private:
       endBarrier.arrive_and_wait();
       endingIterations<N, rank>(Phi, PhiN, jArrStart + jArrLength - (N-1)*nXArr);
       if constexpr (N%2) std::swap(Phi, PhiN);
+
+#ifndef NO_DELTA
+      if constexpr (rank == 0)
+        std::cout << delta(Phi, PhiN, nXArr, jArrLimit) << "\n";   
+#endif
       startBarrier.arrive_and_wait();
     }
   }
@@ -139,27 +169,6 @@ private:
 };
 
 
-inline auto delta(const float *Phi, const float* PhiN, size_t nXArr, size_t arrSize) {
-  constexpr auto div8mask = 0xFFFFFFF8ul;
-  const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
-
-  auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
-  for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
-    auto phi  = _mm256_load_ps(Phi + i);
-    auto phin = _mm256_load_ps(PhiN + i);
-    auto sub  = _mm256_sub_ps(phi, phin);
-    auto dist = _mm256_and_ps(sub, absMaskVec);
-    vMax = _mm256_max_ps(vMax, dist);
-  }
-  auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
-  vMax = _mm256_max_ps(vMax, vMaxShuffled);
-  vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
-  vMax = _mm256_max_ps(vMax, vMaxShuffled);
-  auto max = std::max(vMax[0], vMax[4]);
-  for (auto i = arrSize&div8mask; i < arrSize; i++) 
-    max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
-  return max;
-}
 
 int main(int argc, char** argv) {
   if (argc != 4) {
@@ -232,11 +241,6 @@ int main(int argc, char** argv) {
 
   auto start = std::chrono::high_resolution_clock::now();
   eq.solve();
-    std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";
-
-#ifndef NO_DELTA
-  std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
-#endif
   auto end = std::chrono::high_resolution_clock::now();
 
   std::cout << std::chrono::duration<double>(end - start).count() << "\n";

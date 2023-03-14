@@ -1,0 +1,3 @@
+/home/dskvl/nsu_fit/effective-programming/multithread-jacobi/cmake-build-debug/CMakeFiles/multithread_jacobi.dir
+/home/dskvl/nsu_fit/effective-programming/multithread-jacobi/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/dskvl/nsu_fit/effective-programming/multithread-jacobi/cmake-build-debug/CMakeFiles/rebuild_cache.dir
