@@ -57,15 +57,14 @@ public:
 
   template<size_t N>
   inline void initThreads(const size_t jStart, const size_t jLength) {
+    auto countIterationsInstantiated = [=, this](float* Phi, float* PhiN, const size_t jS, const size_t jL) {
+      countIterations<Iters, nThreads-N>(Phi, PhiN, jS, jL);
+    };
     if constexpr(N == 0) {}
     else if constexpr (N == 1)
-      threads[nThreads-2] = std::thread([=, this](float* Phi, float* PhiN, const size_t jS, const size_t jL) {
-        countIterations<Iters, nThreads-N>(Phi, PhiN, jS, jL);
-      }, PhiGlobal, PhiNGlobal, jStart, jLength + nY%nThreads);
+      threads[nThreads-2] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jStart, jLength + nY%nThreads);
     else {
-      threads[nThreads-1 - N] = std::thread([=, this](float* Phi, float* PhiN, const size_t jS, const size_t jArrL) {
-        countIterations<Iters, nThreads-N>(Phi, PhiN, jS, jArrL);
-      }, PhiGlobal, PhiNGlobal, jStart, jLength);
+      threads[nThreads-1 - N] = std::thread(countIterationsInstantiated, PhiGlobal, PhiNGlobal, jStart, jLength);
       initThreads<N-1>(jStart+jLength, jLength);
     }
   }
