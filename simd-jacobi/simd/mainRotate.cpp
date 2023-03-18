@@ -94,11 +94,11 @@ int main(int argc, char** argv) {
   for (auto _ = 0ul; _ < nT; _++) {
     for (auto jArr = nXArr; jArr < jArrLimit; jArr+=nXArr) {
       auto topLoadCurrent   = _mm256_load_ps( Phi - 8 + jArr - nXArr);
-      auto midLoadCurrent   = _mm256_loadu_ps(Phi - 8 + jArr);
-      auto bottomLoadCurrent = _mm256_loadu_ps(Phi - 8 + jArr + nXArr);
+      auto midLoadCurrent   = _mm256_load_ps(Phi - 8 + jArr);
+      auto bottomLoadCurrent = _mm256_load_ps(Phi - 8 + jArr + nXArr);
       auto topLoadNext      = _mm256_load_ps( Phi + 0 + jArr - nXArr);
-      auto midLoadNext      = _mm256_loadu_ps(Phi + 0 + jArr);
-      auto bottomLoadNext   = _mm256_loadu_ps(Phi + 0 + jArr + nXArr);
+      auto midLoadNext      = _mm256_load_ps(Phi + 0 + jArr);
+      auto bottomLoadNext   = _mm256_load_ps(Phi + 0 + jArr + nXArr);
       __m256 topLoadPrev, midLoadPrev, bottomLoadPrev;
       for (auto i = 0ul; i < ((nX+1 - 8)&div8mask); i+=8) {
         topLoadPrev         = topLoadCurrent;
@@ -110,9 +110,9 @@ int main(int argc, char** argv) {
         bottomLoadCurrent    = bottomLoadNext;        
           
         topLoadNext      = _mm256_load_ps( Phi + i + 8 + jArr - nXArr);
-        midLoadNext      = _mm256_loadu_ps(Phi + i + 8 + jArr);
-        bottomLoadNext   = _mm256_loadu_ps(Phi + i + 8 +jArr + nXArr);
-        auto vD      = _mm256_loadu_ps(D + i + jArr);
+        midLoadNext      = _mm256_load_ps(Phi + i + 8 + jArr);
+        bottomLoadNext   = _mm256_load_ps(Phi + i + 8 +jArr + nXArr);
+        auto vD      = _mm256_load_ps(D + i + jArr);
         
         auto bottom  = bottomLoadCurrent;
         auto top     = topLoadCurrent;

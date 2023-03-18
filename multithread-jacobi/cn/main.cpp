@@ -4,6 +4,7 @@
 #include <chrono>
 #include <limits>
 #include <barrier>
+#include <numeric>
 
 #ifndef CPU_CORES
 #define CPU_CORES 4
@@ -16,28 +17,6 @@ void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::s
       out << mtx[i + jArr] <<  " ";
     out << "\n";  
   }
-}
-
-inline auto delta(const float *Phi, const float* PhiN, size_t nXArr, size_t arrSize) {
-  constexpr auto div8mask = 0xFFFFFFF8ul;
-  const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
-
-  auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
-  for (auto i = nXArr; i < ((arrSize-8)&div8mask); i+=8) {
-    auto phi  = _mm256_load_ps(Phi + i);
-    auto phin = _mm256_load_ps(PhiN + i);
-    auto sub  = _mm256_sub_ps(phi, phin);
-    auto dist = _mm256_and_ps(sub, absMaskVec);
-    vMax = _mm256_max_ps(vMax, dist);
-  }
-  auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
-  vMax = _mm256_max_ps(vMax, vMaxShuffled);
-  vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
-  vMax = _mm256_max_ps(vMax, vMaxShuffled);
-  auto max = std::max(vMax[0], vMax[4]);
-  for (auto i = arrSize&div8mask; i < arrSize; i++) 
-    max = std::max<float>(max, std::abs(Phi[i] - PhiN[i]));
-  return max;
 }
 
 template<size_t nThreads>
@@ -73,6 +52,27 @@ public:
       thread.join();
   }
 private:
+  inline auto delta(size_t jStart, size_t jLength) {
+    constexpr auto div8mask = 0xFFFFFFF8ul;
+    const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
+    const auto absIndexEnd = (jLength+jStart)*nXArr;
+    auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
+    for (auto i = jStart*nXArr; i < (absIndexEnd&div8mask); i+=8) {
+      auto phi  = _mm256_load_ps(PhiGlobal + i);
+      auto phin = _mm256_load_ps(PhiNGlobal + i);
+      auto sub  = _mm256_sub_ps(phi, phin);
+      auto dist = _mm256_and_ps(sub, absMaskVec);
+      vMax = _mm256_max_ps(vMax, dist);
+    }
+    auto vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(2, 3, 0, 1));
+    vMax = _mm256_max_ps(vMax, vMaxShuffled);
+    vMaxShuffled = _mm256_shuffle_ps(vMax, vMax, _MM_SHUFFLE(1, 0, 3, 2));
+    vMax = _mm256_max_ps(vMax, vMaxShuffled);
+    auto max = std::max(vMax[0], vMax[4]);
+    for (auto i = (absIndexEnd&div8mask); i < absIndexEnd; i++) 
+      max = std::max<float>(max, std::abs(PhiGlobal[i] - PhiNGlobal[i]));
+    return max;
+  }
   inline void countLine(float* Phi, float* PhiN, size_t jArr) {
     constexpr auto div8mask = ~7ul; 
     for (auto i = 1ul; i < ((nX+1)&div8mask + 1); i+=8) {
@@ -108,13 +108,19 @@ private:
       std::swap(Phi, PhiN);
 
 #ifndef NO_DELTA
+      deltas[rank] = delta(jStart, jLength);      
+#endif
+      startBarrier.arrive_and_wait();
+#ifndef NO_DELTA
       if constexpr (rank == 0)
-        std::cout << delta(Phi, PhiN, nXArr, jArrLimit) << "\n";   
+        std::cout << std::reduce(deltas.begin(), deltas.end(), std::numeric_limits<float>::min(), 
+                                 [](const auto& a, const auto& b){ return std::max(a, b); }) << "\n"; 
 #endif
     }
   }
   
   std::barrier<> startBarrier;
+  std::array<float, nThreads> deltas;
   std::array<std::thread, nThreads-1> threads;
 
   float* PhiGlobal, *PhiNGlobal;
@@ -199,7 +205,7 @@ int main(int argc, char** argv) {
   eq.solve();
   auto end = std::chrono::high_resolution_clock::now();
 
-  std::cout << std::chrono::duration<double>(end - start).count() << "\n";
+  std::cerr << std::chrono::duration<double>(end - start).count() << "\n";
 
 #ifdef DUMP
   dump(PhiN, nXArr, nYArr, "out" + std::to_string(cpuCores) + "cores");

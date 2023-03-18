@@ -19,11 +19,12 @@ void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::s
     out << "\n";  
   }
 }
-
+size_t total = 0;
 inline void countLine(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr,
   const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
   constexpr auto div8mask = 0xFFFFFFF8ul; 
-  for (auto i = 0ul; i < ((nX+1 - 8)&div8mask); i+=8) {
+  
+  for (auto i = 0ul; i < ((nX+1)&div8mask); i+=8) {
     auto topL    = _mm256_load_ps( Phi + i - 1 + jArr - nXArr);
     auto top     = _mm256_loadu_ps(Phi + i +     jArr - nXArr);
     auto topR    = _mm256_loadu_ps(Phi + i + 1 + jArr - nXArr);
@@ -39,6 +40,7 @@ inline void countLine(float* Phi, float* PhiN, const size_t nX, const size_t nXA
     auto result  = _mm256_fmadd_ps(vB, _mm256_add_ps(left, right), result1);
        
     _mm256_storeu_ps(PhiN + i + jArr, result);
+    total++;
   }
   for (auto i = (nX+1)&div8mask; i < nX+1; i++) {
     PhiN[i + jArr] = A*(Phi[i + jArr-nXArr] + Phi[i + jArr+nXArr]) + B*(Phi[i-1 + jArr] + Phi[i+1 + jArr])
@@ -188,7 +190,7 @@ int main(int argc, char** argv) {
   std::fill(PhiN, PhiN+arrSize, 0.0f);
 
   auto start = std::chrono::high_resolution_clock::now();
-  for (auto _ = 0ul; _ < nT/(iterationsPerRun); _++) {
+  for (auto _ = 0ul; _ < nT/iterationsPerRun; _++) {
     countIterations<iterationsPerRun>(Phi, PhiN, nX, nXArr, jArrLimit, vA, vB, vC, D, A, B, C);
 #ifndef NO_DELTA
     std::cout << delta(Phi, PhiN, nXArr, arrSize) << "\n";   
@@ -198,7 +200,7 @@ int main(int argc, char** argv) {
   auto end = std::chrono::high_resolution_clock::now();
 
   std::cout << std::chrono::duration<double>(end - start).count() << "\n";
-
+  std::cout << total << "\n";
 #ifdef DUMP
   dump(Phi, nXArr, nYArr, "out" + std::to_string(ITERS_PER_RUN) + "iters");
 #endif

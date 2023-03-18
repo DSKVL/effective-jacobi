@@ -88,59 +88,37 @@ int main(int argc, char** argv) {
   std::fill(Phi, Phi+arrSize, 0.0f);
   std::fill(PhiN, PhiN+arrSize, 0.0f);
 
+  size_t total = 0;
   const auto absMaskVec = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
   auto start = std::chrono::high_resolution_clock::now();  
   for (auto _ = 0ul; _ < nT; _++) {
     for (auto jArr = nXArr; jArr < jArrLimit; jArr+=nXArr) {
-      auto topLoadCurrent   = _mm256_load_ps( Phi - 8 + jArr - nXArr);
-      auto midLoadCurrent   = _mm256_loadu_ps(Phi - 8 + jArr);
-      auto bottomLoadCurent = _mm256_loadu_ps(Phi - 8 + jArr + nXArr);
-      auto topLoadNext      = _mm256_load_ps( Phi + 0 + jArr - nXArr);
-      auto midLoadNext      = _mm256_loadu_ps(Phi + 0 + jArr);
-      auto bottomLoadNext   = _mm256_loadu_ps(Phi + 0 + jArr + nXArr);
-      __m256 topLoadPrev, midLoadPrev, bottomLoadPrev;
-      for (auto i = 0ul; i < ((nX+1 - 8)&div8mask); i+=8) {
-        topLoadPrev         = topLoadCurrent;
-        midLoadPrev         = midLoadCurrent;
-        bottomLoadPrev      = bottomLoadCurent;
-        
-        topLoadCurrent      = topLoadNext;
-        midLoadCurrent      = midLoadNext;       
-        bottomLoadCurent    = bottomLoadNext;        
-          
-        topLoadNext      = _mm256_load_ps( Phi + i + 8 + jArr - nXArr);
-        midLoadNext      = _mm256_loadu_ps(Phi + i + 8 + jArr);
-        bottomLoadNext   = _mm256_loadu_ps(Phi + i + 8 +jArr + nXArr);
-        auto vD      = _mm256_loadu_ps(D + i + jArr);
-        
-        auto bottom  = bottomLoadCurent;
-        auto top     = topLoadCurrent;
-
-        
+      for (auto i = 1ul; i < ((nX+1)&div8mask); i+=8) {
         auto topL    = _mm256_load_ps( Phi + i - 1 + jArr - nXArr);
+        auto top     = _mm256_loadu_ps(Phi + i +     jArr - nXArr);
         auto topR    = _mm256_loadu_ps(Phi + i + 1 + jArr - nXArr);
-        
-        
         auto left    = _mm256_load_ps( Phi + i - 1 + jArr);
+        auto vD      = _mm256_loadu_ps(D + i + jArr);
         auto right   = _mm256_loadu_ps(Phi + i + 1 + jArr);
-        
-        
         auto bottomL = _mm256_load_ps( Phi + i - 1 + jArr + nXArr);
+        auto bottom  = _mm256_loadu_ps(Phi + i +     jArr + nXArr);
         auto bottomR = _mm256_loadu_ps(Phi + i + 1 + jArr + nXArr);
 
-        
-        auto result0  = _mm256_fmadd_ps(vC, topL + topR + bottomL + bottomR, vD);
+    
+        auto result0  = _mm256_fmadd_ps(vC, _mm256_add_ps(_mm256_add_ps(topL, topR),
+                                                      _mm256_add_ps(bottomL, bottomR)), vD);
         auto result1 = _mm256_fmadd_ps(vA, _mm256_add_ps(top, bottom), result0);
         auto result  = _mm256_fmadd_ps(vB, _mm256_add_ps(left, right), result1);
-        
         _mm256_storeu_ps(PhiN + i + jArr, result);
+        total++;
       }
-      for (auto i = (nX+1)&div8mask; i < nX+1; i++) {
-        PhiN[i + jArr] = A*(Phi[i + jArr-nXArr] + Phi[i + jArr+nXArr]) + B*(Phi[i-1 + jArr] + Phi[i+1 + jArr])
-                      + C*(Phi[i-1 + jArr-nXArr] + Phi[i-1 + jArr+nXArr] + Phi[i+1 + jArr-nXArr] + Phi[i+1 + jArr+nXArr])
-                      + D[i + jArr];
-      }
+    
+    for (auto i = (nX+1)&div8mask; i < nX+1; i++) {
+      PhiN[i + jArr] = A*(Phi[i + jArr-nXArr] + Phi[i + jArr+nXArr]) + B*(Phi[i-1 + jArr] + Phi[i+1 + jArr])
+                    + C*(Phi[i-1 + jArr-nXArr] + Phi[i-1 + jArr+nXArr] + Phi[i+1 + jArr-nXArr] + Phi[i+1 + jArr+nXArr])
+                    + D[i + jArr];
     }
+   }
 
 
 //    auto vMax = _mm256_set1_ps(std::numeric_limits<float>::min());    
@@ -164,9 +142,9 @@ int main(int argc, char** argv) {
   auto end = std::chrono::high_resolution_clock::now();
 
 
-  std::cout << std::chrono::duration<double>(end - start).count() << "\n";
-
-  dump(Phi, nXArr, nYArr, "Out");
+  std::cout << std::chrono::duration<double>(end - start).count() << "\n" << total << "\n";
+  
+//  dump(Phi, nXArr, nYArr, "Out");
  
   delete[] rho;
   free(D);
