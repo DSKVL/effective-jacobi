@@ -1,3 +1,0 @@
-CompileFlags:                     # Tweak the parse settings
-  Add: [ -std=c++20, -Wall, -Wpedantic, -Wextra, -Werror ]
-  Compiler: g++

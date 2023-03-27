@@ -125,7 +125,6 @@ private:
       conds[rank].last = conds[rank].last + 1;
       
       std::swap(Phi, PhiN);
-      //TODO
 #ifndef NO_DELTA
       deltas[it%nThreads][rank] = delta(jStart, jLength);      
 #endif
