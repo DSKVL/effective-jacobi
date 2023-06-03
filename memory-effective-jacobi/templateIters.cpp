@@ -19,7 +19,6 @@ void dump(const float *mtx, const size_t nXArr, const size_t nYArr, const std::s
     out << "\n";  
   }
 }
-size_t total = 0;
 inline void countLine(float* Phi, float* PhiN, const size_t nX, const size_t nXArr, const size_t jArr,
   const __m256 vA, const __m256 vB, const __m256 vC, const float* D, const float A, const float B, const float C) {
   constexpr auto div8mask = 0xFFFFFFF8ul; 
