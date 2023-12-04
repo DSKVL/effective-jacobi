@@ -1,0 +1,12 @@
+# started on Sat Feb 25 18:06:16 2023
+
+
+ Performance counter stats for './main 10000 10000 120' (20 runs):
+
+    45,159,233,447      L1-dcache-loads:u                                                    ( +-  0.00% )
+     6,082,644,678      L1-dcache-load-misses:u          #   13.47% of all L1-dcache accesses  ( +-  0.00% )
+       675,584,961      LLC-loads:u                                                          ( +-  0.34% )
+       278,569,860      LLC-load-misses:u                #   41.37% of all LL-cache accesses  ( +-  0.40% )
+
+            28.236 +- 0.208 seconds time elapsed  ( +-  0.74% )
+
